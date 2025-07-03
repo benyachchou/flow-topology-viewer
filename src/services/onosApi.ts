@@ -1,4 +1,3 @@
-
 class ONOSApiService {
   private baseUrl: string;
   private auth: string;
@@ -10,12 +9,13 @@ class ONOSApiService {
   updateConfig() {
     const settings = localStorage.getItem('onosSettings');
     if (settings) {
-      const { controllerIp, controllerPort } = JSON.parse(settings);
+      const { controllerIp, controllerPort, username, password } = JSON.parse(settings);
       this.baseUrl = `http://${controllerIp}:${controllerPort}/onos/v1`;
+      this.auth = 'Basic ' + btoa(`${username || 'onos'}:${password || 'rocks'}`);
     } else {
       this.baseUrl = 'http://127.0.0.1:8181/onos/v1';
+      this.auth = 'Basic ' + btoa('onos:rocks');
     }
-    this.auth = 'Basic ' + btoa('onos:rocks');
   }
 
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
@@ -32,12 +32,17 @@ class ONOSApiService {
     console.log(`Making ONOS API request to: ${url}`);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch(url, {
         ...options,
         headers,
         mode: 'cors',
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       console.log(`ONOS API Response status: ${response.status} for ${endpoint}`);
 
       if (!response.ok) {
@@ -49,6 +54,14 @@ class ONOSApiService {
       return data;
     } catch (error) {
       console.error(`ONOS API Error for ${endpoint}:`, error);
+      
+      // Handle specific error types
+      if (error.name === 'AbortError') {
+        throw new Error('Timeout: Le contrôleur ONOS ne répond pas');
+      } else if (error.message === 'Failed to fetch') {
+        throw new Error('Erreur CORS: Impossible de se connecter au contrôleur. Vérifiez que ONOS autorise les requêtes CORS ou utilisez un proxy.');
+      }
+      
       throw error;
     }
   }
@@ -104,7 +117,7 @@ class ONOSApiService {
     return this.makeRequest('/applications');
   }
 
-  // Test connection
+  // Test connection with better error handling
   async testConnection() {
     try {
       const result = await this.makeRequest('/devices');
@@ -112,7 +125,29 @@ class ONOSApiService {
       return { success: true, data: result };
     } catch (error) {
       console.error('ONOS Connection test failed:', error);
-      return { success: false, error: error.message };
+      return { 
+        success: false, 
+        error: error.message,
+        suggestions: [
+          'Vérifiez que ONOS est démarré sur 192.168.94.129:8181',
+          'Configurez CORS dans ONOS ou utilisez un proxy',
+          'Testez depuis une extension comme CORS Unblock',
+          'Utilisez une approche backend pour contourner CORS'
+        ]
+      };
+    }
+  }
+
+  // Add method to check if we can reach the controller
+  async ping() {
+    try {
+      const response = await fetch(`${this.baseUrl.replace('/onos/v1', '')}/onos/ui/`, {
+        method: 'HEAD',
+        mode: 'no-cors'
+      });
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 }

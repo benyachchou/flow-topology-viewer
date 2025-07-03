@@ -1,11 +1,12 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTriangle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { onosApi } from '@/services/onosApi';
 
 export default function Settings() {
   const [controllerIp, setControllerIp] = useState('127.0.0.1');
@@ -54,11 +55,10 @@ export default function Settings() {
   const testConnection = async () => {
     setTesting(true);
     
-    // Simulation du test de connexion
-    setTimeout(() => {
-      const success = Math.random() > 0.3; // 70% de chances de succès
+    try {
+      const result = await onosApi.testConnection();
       
-      if (success) {
+      if (result.success) {
         setConnectionStatus('connected');
         toast({
           title: "Connexion réussie",
@@ -66,15 +66,23 @@ export default function Settings() {
         });
       } else {
         setConnectionStatus('error');
+        console.error('Connection failed:', result.error, result.suggestions);
         toast({
           title: "Échec de la connexion",
-          description: "Impossible de se connecter au contrôleur ONOS. Vérifiez les paramètres.",
+          description: result.error,
           variant: "destructive",
         });
       }
-      
-      setTesting(false);
-    }, 2000);
+    } catch (error) {
+      setConnectionStatus('error');
+      toast({
+        title: "Erreur de test",
+        description: "Impossible de tester la connexion",
+        variant: "destructive",
+      });
+    }
+    
+    setTesting(false);
   };
 
   const resetToDefaults = () => {
@@ -121,6 +129,22 @@ export default function Settings() {
           {getStatusText()}
         </Badge>
       </div>
+
+      {/* Add CORS Warning */}
+      <Alert className="bg-yellow-500/10 border-yellow-500/20">
+        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+        <AlertDescription className="text-yellow-200">
+          <strong>Problème CORS détecté:</strong> Les navigateurs bloquent les requêtes vers {controllerIp}:8181.
+          <br />
+          <strong>Solutions:</strong>
+          <ul className="mt-2 list-disc list-inside space-y-1">
+            <li>Installer une extension CORS (CORS Unblock, CORS Everywhere)</li>
+            <li>Démarrer Chrome avec --disable-web-security --user-data-dir=/tmp/chrome_dev</li>
+            <li>Configurer ONOS pour autoriser CORS</li>
+            <li>Utiliser un proxy/tunnel (ngrok, serveo)</li>
+          </ul>
+        </AlertDescription>
+      </Alert>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Configuration du contrôleur */}
@@ -282,6 +306,53 @@ export default function Settings() {
               <h4 className="font-medium text-white mb-2">Applications</h4>
               <p className="text-blue-400 font-mono">/onos/v1/applications</p>
               <p className="text-slate-400">Apps ONOS actives</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add CORS Configuration Section */}
+      <Card className="bg-slate-800 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">Configuration CORS & Connectivité</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-700 rounded-lg">
+              <h4 className="font-medium text-white mb-2">Extension Chrome</h4>
+              <p className="text-sm text-slate-300 mb-2">Installer "CORS Unblock" depuis Chrome Web Store</p>
+              <Button
+                onClick={() => window.open('https://chrome.google.com/webstore/search/cors%20unblock', '_blank')}
+                variant="outline"
+                size="sm"
+                className="border-slate-600 text-white hover:bg-slate-600"
+              >
+                Ouvrir Chrome Store
+              </Button>
+            </div>
+            
+            <div className="p-4 bg-slate-700 rounded-lg">
+              <h4 className="font-medium text-white mb-2">Command Chrome</h4>
+              <p className="text-sm text-slate-300 mb-2">Démarrer Chrome sans sécurité CORS</p>
+              <code className="text-xs bg-slate-800 p-2 rounded block text-green-400">
+                chrome --disable-web-security --user-data-dir=/tmp/chrome_dev
+              </code>
+            </div>
+            
+            <div className="p-4 bg-slate-700 rounded-lg">
+              <h4 className="font-medium text-white mb-2">ONOS CORS Config</h4>
+              <p className="text-sm text-slate-300 mb-2">Configurer ONOS pour autoriser CORS</p>
+              <code className="text-xs bg-slate-800 p-2 rounded block text-green-400">
+                onos-app-cors
+              </code>
+            </div>
+            
+            <div className="p-4 bg-slate-700 rounded-lg">
+              <h4 className="font-medium text-white mb-2">Proxy/Tunnel</h4>
+              <p className="text-sm text-slate-300 mb-2">Utiliser ngrok pour créer un tunnel</p>
+              <code className="text-xs bg-slate-800 p-2 rounded block text-green-400">
+                ngrok http 192.168.94.129:8181
+              </code>
             </div>
           </div>
         </CardContent>
