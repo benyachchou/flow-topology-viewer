@@ -25,8 +25,11 @@ class ONOSApiService {
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': this.auth,
+      'Accept': 'application/json',
       ...options.headers,
     };
+
+    console.log(`Making ONOS API request to: ${url}`);
 
     try {
       const response = await fetch(url, {
@@ -35,11 +38,15 @@ class ONOSApiService {
         mode: 'cors',
       });
 
+      console.log(`ONOS API Response status: ${response.status} for ${endpoint}`);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      console.log(`ONOS API Data received for ${endpoint}:`, data);
+      return data;
     } catch (error) {
       console.error(`ONOS API Error for ${endpoint}:`, error);
       throw error;
@@ -99,7 +106,14 @@ class ONOSApiService {
 
   // Test connection
   async testConnection() {
-    return this.makeRequest('/devices');
+    try {
+      const result = await this.makeRequest('/devices');
+      console.log('ONOS Connection test successful:', result);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('ONOS Connection test failed:', error);
+      return { success: false, error: error.message };
+    }
   }
 }
 
