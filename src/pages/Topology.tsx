@@ -1,46 +1,43 @@
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-
-// Simulation de données de topologie
-const mockTopology = {
-  devices: [
-    { id: 'of:0000000000000001', type: 'switch', name: 'Switch-1', status: 'ACTIVE', x: 200, y: 150 },
-    { id: 'of:0000000000000002', type: 'switch', name: 'Switch-2', status: 'ACTIVE', x: 400, y: 150 },
-    { id: 'of:0000000000000003', type: 'switch', name: 'Switch-3', status: 'ACTIVE', x: 300, y: 300 },
-  ],
-  hosts: [
-    { id: 'host-1', mac: '00:00:00:00:00:01', ip: '10.0.0.1', location: 'of:0000000000000001/1', x: 100, y: 50 },
-    { id: 'host-2', mac: '00:00:00:00:00:02', ip: '10.0.0.2', location: 'of:0000000000000002/1', x: 500, y: 50 },
-    { id: 'host-3', mac: '00:00:00:00:00:03', ip: '10.0.0.3', location: 'of:0000000000000003/1', x: 300, y: 400 },
-  ],
-  links: [
-    { src: 'of:0000000000000001', dst: 'of:0000000000000002', type: 'DIRECT' },
-    { src: 'of:0000000000000001', dst: 'of:0000000000000003', type: 'DIRECT' },
-    { src: 'of:0000000000000002', dst: 'of:0000000000000003', type: 'DIRECT' },
-  ]
-};
+import { useOnosData } from '../hooks/useOnosData';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function Topology() {
-  const [topology, setTopology] = useState(mockTopology);
+  const { devices, hosts, topology, isLoading, error, refetch } = useOnosData(5000);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      // Simulation de mise à jour de la topologie
-      console.log('Mise à jour de la topologie...');
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
-
-  const handleDeviceClick = (device) => {
+  const handleDeviceClick = (device: any) => {
     setSelectedDevice(device);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="flex items-center space-x-2">
+            <RefreshCw className="animate-spin h-6 w-6 text-blue-500" />
+            <span className="text-white">Chargement de la topologie...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Generate positions for devices and hosts for visualization
+  const getDevicePosition = (index: number, total: number) => {
+    const angle = (2 * Math.PI * index) / total;
+    const radius = 120;
+    const centerX = 300;
+    const centerY = 200;
+    return {
+      x: centerX + radius * Math.cos(angle),
+      y: centerY + radius * Math.sin(angle)
+    };
   };
 
   return (
@@ -58,11 +55,23 @@ export default function Topology() {
           >
             {autoRefresh ? "Auto-rafraîchissement ON" : "Auto-rafraîchissement OFF"}
           </Button>
-          <Button variant="outline" onClick={() => setTopology(mockTopology)}>
+          <Button variant="outline" onClick={refetch}>
+            <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
         </div>
       </div>
+
+      {error && (
+        <Card className="bg-red-900/20 border-red-700">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              <span className="text-red-400">Erreur: {error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Visualisation de la topologie */}
@@ -73,19 +82,18 @@ export default function Topology() {
           <CardContent>
             <div className="relative w-full h-96 bg-slate-900 rounded-lg overflow-hidden">
               <svg className="w-full h-full">
-                {/* Liens */}
-                {topology.links.map((link, index) => {
-                  const srcDevice = topology.devices.find(d => d.id === link.src);
-                  const dstDevice = topology.devices.find(d => d.id === link.dst);
-                  if (!srcDevice || !dstDevice) return null;
-                  
+                {/* Draw connections between devices */}
+                {devices && devices.length > 1 && devices.map((device: any, index: number) => {
+                  if (index === devices.length - 1) return null;
+                  const pos1 = getDevicePosition(index, devices.length);
+                  const pos2 = getDevicePosition(index + 1, devices.length);
                   return (
                     <line
-                      key={index}
-                      x1={srcDevice.x}
-                      y1={srcDevice.y}
-                      x2={dstDevice.x}
-                      y2={dstDevice.y}
+                      key={`link-${index}`}
+                      x1={pos1.x}
+                      y1={pos1.y}
+                      x2={pos2.x}
+                      y2={pos2.y}
                       stroke="#64748b"
                       strokeWidth="2"
                       className="opacity-70"
@@ -93,52 +101,78 @@ export default function Topology() {
                   );
                 })}
 
-                {/* Switches */}
-                {topology.devices.map((device) => (
-                  <g key={device.id} onClick={() => handleDeviceClick(device)} className="cursor-pointer">
-                    <rect
-                      x={device.x - 20}
-                      y={device.y - 15}
-                      width="40"
-                      height="30"
-                      fill={device.status === 'ACTIVE' ? '#3b82f6' : '#ef4444'}
-                      rx="4"
-                      className="hover:opacity-80 transition-opacity"
-                    />
-                    <text
-                      x={device.x}
-                      y={device.y + 25}
-                      textAnchor="middle"
-                      fill="#e2e8f0"
-                      fontSize="12"
-                    >
-                      {device.name}
-                    </text>
-                  </g>
-                ))}
+                {/* Switches/Devices */}
+                {devices && devices.map((device: any, index: number) => {
+                  const position = getDevicePosition(index, devices.length);
+                  return (
+                    <g key={device.id} onClick={() => handleDeviceClick(device)} className="cursor-pointer">
+                      <rect
+                        x={position.x - 20}
+                        y={position.y - 15}
+                        width="40"
+                        height="30"
+                        fill={device.available ? '#3b82f6' : '#ef4444'}
+                        rx="4"
+                        className="hover:opacity-80 transition-opacity"
+                      />
+                      <text
+                        x={position.x}
+                        y={position.y + 25}
+                        textAnchor="middle"
+                        fill="#e2e8f0"
+                        fontSize="10"
+                      >
+                        Switch-{index + 1}
+                      </text>
+                    </g>
+                  );
+                })}
 
-                {/* Hôtes */}
-                {topology.hosts.map((host) => (
-                  <g key={host.id} onClick={() => handleDeviceClick(host)} className="cursor-pointer">
-                    <circle
-                      cx={host.x}
-                      cy={host.y}
-                      r="12"
-                      fill="#10b981"
-                      className="hover:opacity-80 transition-opacity"
-                    />
-                    <text
-                      x={host.x}
-                      y={host.y + 25}
-                      textAnchor="middle"
-                      fill="#e2e8f0"
-                      fontSize="10"
-                    >
-                      {host.ip}
-                    </text>
-                  </g>
-                ))}
+                {/* Hosts */}
+                {hosts && hosts.map((host: any, index: number) => {
+                  const deviceIndex = index % (devices?.length || 1);
+                  const devicePos = getDevicePosition(deviceIndex, devices?.length || 1);
+                  const hostX = devicePos.x + (index % 2 === 0 ? -60 : 60);
+                  const hostY = devicePos.y + (index % 2 === 0 ? -40 : 40);
+                  
+                  return (
+                    <g key={host.id} onClick={() => handleDeviceClick(host)} className="cursor-pointer">
+                      {/* Connection line to device */}
+                      <line
+                        x1={devicePos.x}
+                        y1={devicePos.y}
+                        x2={hostX}
+                        y2={hostY}
+                        stroke="#10b981"
+                        strokeWidth="1"
+                        className="opacity-50"
+                      />
+                      <circle
+                        cx={hostX}
+                        cy={hostY}
+                        r="8"
+                        fill="#10b981"
+                        className="hover:opacity-80 transition-opacity"
+                      />
+                      <text
+                        x={hostX}
+                        y={hostY + 20}
+                        textAnchor="middle"
+                        fill="#e2e8f0"
+                        fontSize="8"
+                      >
+                        {host.ipAddresses?.[0] || `Host-${index + 1}`}
+                      </text>
+                    </g>
+                  );
+                })}
               </svg>
+              
+              {(!devices || devices.length === 0) && (!hosts || hosts.length === 0) && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-slate-400">Aucune topologie disponible</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -153,10 +187,10 @@ export default function Topology() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-medium text-white">
-                    {selectedDevice.name || selectedDevice.ip}
+                    {selectedDevice.type === 'SWITCH' ? 'Switch' : selectedDevice.ipAddresses?.[0] || 'Device'}
                   </h3>
-                  <Badge variant={selectedDevice.status === 'ACTIVE' ? 'default' : 'destructive'}>
-                    {selectedDevice.status || 'Connected'}
+                  <Badge variant={selectedDevice.available !== false ? 'default' : 'destructive'}>
+                    {selectedDevice.available !== false ? 'Actif' : 'Inactif'}
                   </Badge>
                 </div>
                 
@@ -182,17 +216,31 @@ export default function Topology() {
                     </div>
                   )}
                   
-                  {selectedDevice.ip && (
+                  {selectedDevice.ipAddresses && (
                     <div>
                       <span className="text-slate-400">IP:</span>
-                      <p className="text-white">{selectedDevice.ip}</p>
+                      <p className="text-white">{selectedDevice.ipAddresses.join(', ')}</p>
                     </div>
                   )}
                   
-                  {selectedDevice.location && (
+                  {selectedDevice.locations && (
                     <div>
                       <span className="text-slate-400">Localisation:</span>
-                      <p className="text-white font-mono text-xs">{selectedDevice.location}</p>
+                      <p className="text-white font-mono text-xs">{selectedDevice.locations.join(', ')}</p>
+                    </div>
+                  )}
+
+                  {selectedDevice.mfr && (
+                    <div>
+                      <span className="text-slate-400">Fabricant:</span>
+                      <p className="text-white">{selectedDevice.mfr}</p>
+                    </div>
+                  )}
+
+                  {selectedDevice.role && (
+                    <div>
+                      <span className="text-slate-400">Rôle:</span>
+                      <p className="text-white">{selectedDevice.role}</p>
                     </div>
                   )}
                 </div>
@@ -213,9 +261,9 @@ export default function Topology() {
             <CardTitle className="text-sm text-slate-300">Switches</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{topology.devices.length}</div>
+            <div className="text-2xl font-bold text-white">{devices?.length || 0}</div>
             <p className="text-xs text-slate-400">
-              {topology.devices.filter(d => d.status === 'ACTIVE').length} actifs
+              {devices?.filter((d: any) => d.available).length || 0} actifs
             </p>
           </CardContent>
         </Card>
@@ -225,18 +273,18 @@ export default function Topology() {
             <CardTitle className="text-sm text-slate-300">Hôtes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{topology.hosts.length}</div>
+            <div className="text-2xl font-bold text-white">{hosts?.length || 0}</div>
             <p className="text-xs text-slate-400">Terminaux connectés</p>
           </CardContent>
         </Card>
 
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-300">Liens</CardTitle>
+            <CardTitle className="text-sm text-slate-300">Clusters</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{topology.links.length}</div>
-            <p className="text-xs text-slate-400">Connexions directes</p>
+            <div className="text-2xl font-bold text-white">{topology?.clusters || 1}</div>
+            <p className="text-xs text-slate-400">Groupes de topologie</p>
           </CardContent>
         </Card>
       </div>
